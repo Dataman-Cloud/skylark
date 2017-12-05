@@ -27,14 +27,14 @@ echo "copying source ..."
 cp -rf $GOPATH/$source_dir/Godeps/_workspace/src/* $GOPATH/src/
 cp -rf $GOPATH/$source_dir $GOPATH/src
 
+# envs 
+gitCommit=$(git rev-parse --short HEAD)
+buildAt=$(date -u +%Y-%m-%d_%H:%M:%S)
+pkg="oam-docker-ipam"
+BUILD_FLAGS="-X $pkg/version.version=$version -X $pkg/version.gitCommit=${gitCommit} -X $pkg/version.buildAt=$buildAt -w -s"
+
 # create version info
 sed -i "s/1.0.0/$version/g" $GOPATH/src/$source_dir/main.go
 
-# go build
-echo "building source..."
-cd $GOPATH/src
-go install -v ./oam-docker-ipam
-
-echo "completed !!"
-
-
+# build
+go build -a -ldflags "${BUILD_FLAGS}" -o bin/oam-docker-ipam $pkg

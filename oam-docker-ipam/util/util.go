@@ -1,6 +1,9 @@
 package util
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -70,4 +73,13 @@ func inc(ip net.IP) {
 			break
 		}
 	}
+}
+
+// RandomString is exported
+func RandomString(size int) string {
+	id := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, id); err != nil {
+		return "solar"
+	}
+	return hex.EncodeToString(id)[:size]
 }

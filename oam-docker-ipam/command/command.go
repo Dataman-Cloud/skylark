@@ -11,6 +11,7 @@ import (
 	"oam-docker-ipam/db"
 	"oam-docker-ipam/ipamdriver"
 	"oam-docker-ipam/util"
+	"oam-docker-ipam/version"
 )
 
 var (
@@ -36,7 +37,7 @@ func NewServerCommand() cli.Command {
 
 func startServerAction(c *cli.Context) {
 	debug = c.GlobalBool("debug")
-	db.SetDBAddr(c.GlobalString("cluster-store"))
+	db.Setup(c.GlobalString("cluster-store"))
 	initialize_log()
 	ipamdriver.StartServer()
 }
@@ -54,7 +55,7 @@ func NewIPRangeCommand() cli.Command {
 }
 
 func ipRangeAction(c *cli.Context) {
-	db.SetDBAddr(c.GlobalString("cluster-store"))
+	db.Setup(c.GlobalString("cluster-store"))
 	ip_start := c.String("ip-start")
 	ip_end := c.String("ip-end")
 	if ip_start == "" || ip_end == "" {
@@ -76,7 +77,7 @@ func NewReleaseIPCommand() cli.Command {
 }
 
 func releaseIPAction(c *cli.Context) {
-	db.SetDBAddr(c.GlobalString("cluster-store"))
+	db.Setup(c.GlobalString("cluster-store"))
 	ip_args := c.String("ip")
 	if ip_args == "" {
 		fmt.Println("Invalid args")
@@ -99,7 +100,7 @@ func NewReleaseHostCommand() cli.Command {
 }
 
 func releaseHostAction(c *cli.Context) {
-	db.SetDBAddr(c.GlobalString("cluster-store"))
+	db.Setup(c.GlobalString("cluster-store"))
 	ip := c.String("ip")
 	if ip == "" {
 		fmt.Println("Invalid args")
@@ -123,7 +124,7 @@ func NewHostRangeCommand() cli.Command {
 }
 
 func hostRangeAction(c *cli.Context) {
-	db.SetDBAddr(c.GlobalString("cluster-store"))
+	db.Setup(c.GlobalString("cluster-store"))
 	ip_start := c.String("ip-start")
 	ip_end := c.String("ip-end")
 	gateway := c.String("gateway")
@@ -146,7 +147,17 @@ func NewCreateNetworkCommand() cli.Command {
 }
 
 func createNetworkAction(c *cli.Context) {
-	db.SetDBAddr(c.GlobalString("cluster-store"))
+	db.Setup(c.GlobalString("cluster-store"))
 	ip := c.String("ip")
 	bridge.CreateNetwork(ip)
+}
+
+func NewVersionCommand() cli.Command {
+	return cli.Command{
+		Name:  "version",
+		Usage: "print version",
+		Action: func(c *cli.Context) {
+			version.GetVersion().WriteTo(os.Stdout)
+		},
+	}
 }

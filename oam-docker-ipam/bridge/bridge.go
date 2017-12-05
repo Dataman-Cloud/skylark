@@ -7,7 +7,6 @@ import (
 	"oam-docker-ipam/db"
 	"oam-docker-ipam/util"
 	"path/filepath"
-	"strings"
 
 	log "github.com/Sirupsen/logrus"
 )
@@ -72,7 +71,7 @@ func allocateHost(ip string) error {
 }
 
 func getHost(ip string) (string, error) {
-	ip_pool, err := db.GetKeys(filepath.Join(network_key_prefix, "pool"))
+	ip_pool, err := db.ListKeyNames(filepath.Join(network_key_prefix, "pool"))
 	if err != nil {
 		return "", err
 	}
@@ -80,8 +79,7 @@ func getHost(ip string) (string, error) {
 		return "", errors.New("Pool is empty")
 	}
 	if ip == "" {
-		find_ip := strings.Split(ip_pool[0].Key, "/")
-		ip = find_ip[len(find_ip)-1]
+		ip = ip_pool[0]
 	} else if exist := db.IsKeyExist(filepath.Join(network_key_prefix, "pool", ip)); exist != true {
 		return "", errors.New(fmt.Sprintf("Host %s not in pool", ip))
 	}

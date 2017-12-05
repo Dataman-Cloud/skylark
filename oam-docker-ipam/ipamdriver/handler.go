@@ -2,15 +2,16 @@ package ipamdriver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
-	//"github.com/docker/go-plugins-helpers/ipam"
+	"github.com/docker/libkv/store"
 	netlabel "github.com/docker/libnetwork/netlabel"
 
-	"oam-docker-ipam/util"
 	ipam "oam-docker-ipam/skylarkcni/ipamapi"
-
+	"oam-docker-ipam/util"
 )
 
 type MyIPAMHandler struct {
@@ -49,58 +50,65 @@ func (iph *MyIPAMHandler) ReleasePool(request *ipam.ReleasePoolRequest) (err err
 	return nil
 }
 
-func (iph *MyIPAMHandler) RequestAddress(request *ipam.RequestAddressRequest) (response *ipam.RequestAddressResponse, err error) {
-	var request_json []byte = nil
-	request_json, err = json.Marshal(request)
-	if err != nil {
+func (iph *MyIPAMHandler) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
+	var (
+		reqID      = util.RandomString(16)
+		ip_net     = request.PoolID  // subnet id
+		preferAddr = request.Address // prefered IP, container with fixed ip: `--ip`
+		config, _  = GetConfig(ip_net)
+	)
+
+	bs, _ := json.Marshal(request)
+	log.Printf("IPAM RequestAddress %s payload: %s", reqID, string(bs))
+
+	if value, ok := request.Options["RequestAddressType"]; ok && value == netlabel.Gateway {
+		log.Printf("IPAM RequestAddress %s allocate gateway address %s", reqID, preferAddr)
+		return &ipam.RequestAddressResponse{fmt.Sprintf("%s/%s", preferAddr, config.Mask), nil}, nil
+	}
+
+	// request on docker container start up
+	var (
+		respAddr string
+		err      error
+	)
+	for {
+		respAddr, err = AllocateIP(ip_net, preferAddr)
+		if err == nil {
+			break
+		}
+		// random assigned ip is occupied by other racer, retry ..
+		if err == store.ErrKeyModified {
+			log.Warnf("IPAM RequestAddress %s met a racer, retry another random assignment ...", reqID)
+			time.Sleep(time.Millisecond * 500)
+			continue
+		}
+		log.Errorf("IPAM RequestAddress %s error: %v", reqID, err)
 		return nil, err
 	}
-	log.Infof("RequestAddress %s", request_json)
-	ip_net := request.PoolID
-	ip := request.Address
-	config, _ := GetConfig(ip_net)
 
-	if value, ok := request.Options["RequestAddressType"]; ok && value == netlabel.Gateway || len(request.Options) == 0 {
-		log.Infof("Skip allocate gateway ip %s", ip)
-		return &ipam.RequestAddressResponse{fmt.Sprintf("%s/%s", ip, config.Mask), nil}, nil
-	}
-	ip, err = AllocateIP(ip_net, ip)
-	if err != nil {
-		if value, ok := request.Options["InfraContainerid"]; ok {
-			//save the infracontainerid and ip mapping
-			err = SaveEndpointToStore(value, ip_net, ip)
-			if err != nil {
-				log.Errorf("error saving endpoint to store %s", value)
-			}
-		}
-	}
-	return &ipam.RequestAddressResponse{fmt.Sprintf("%s/%s", ip, config.Mask), nil}, err
+	log.Printf("IPAM RequestAddress %s Allocated IP Address: %s", reqID, respAddr)
+	return &ipam.RequestAddressResponse{fmt.Sprintf("%s/%s", respAddr, config.Mask), nil}, nil
 }
 
-func (iph *MyIPAMHandler) ReleaseAddress(request *ipam.ReleaseAddressRequest) (err error) {
-	var request_json []byte = nil
-	request_json, err = json.Marshal(request)
-	if err != nil {
+func (iph *MyIPAMHandler) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
+	var (
+		reqID  = util.RandomString(16)
+		ip_net = request.PoolID  // subnet id
+		ipAddr = request.Address // target ip
+	)
+
+	bs, _ := json.Marshal(request)
+	log.Printf("IPAM ReleaseAddress %s payload: %s", reqID, string(bs))
+
+	if err := ReleaseIP(ip_net, ipAddr); err != nil {
+		log.Errorf("IPAM ReleaseAddress %s error: %v", reqID, err)
 		return err
 	}
-	log.Infof("ReleaseAddress %s", request_json)
-	err = ReleaseIP(request.PoolID, request.Address)
-	return err
+
+	log.Printf("IPAM ReleaseAddress %s Released IP Address: %s", reqID, ipAddr)
+	return nil
 }
 
-func (iph *MyIPAMHandler) GetAddress(request *ipam.GetAddressRequest) (response *ipam.GetAddressResponse, err error) {
-	var request_json []byte = nil
-	request_json, err = json.Marshal(request)
-	if err != nil {
-		return nil, err
-	}
-	log.Infof("GetAddress %s", request_json)
-        containerid := request.ContainerID
-
-	ip, found := GetEndpointFromStore(containerid)
-	if found == false {
-		log.Errorf("error get endpoint from store %s", containerid)
-	}
-
-	return &ipam.GetAddressResponse{fmt.Sprintf("%s", ip)}, err
+func (iph *MyIPAMHandler) GetAddress(request *ipam.GetAddressRequest) (*ipam.GetAddressResponse, error) {
+	return nil, errors.New("this implemention temporarily closed")
 }

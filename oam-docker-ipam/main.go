@@ -24,6 +24,7 @@ func main() {
 		command.NewHostRangeCommand(),
 		command.NewReleaseHostCommand(),
 		command.NewCreateNetworkCommand(),
+		command.NewVersionCommand(),
 	}
 	app.Run(os.Args)
 }
