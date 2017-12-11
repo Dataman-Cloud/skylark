@@ -50,15 +50,15 @@ func StartServer() {
 	IpResourceCleanUP()
 
 	//Create etcd watcher and event handler for rate limit change
-	evch, err := db.WatchDir(db.KeyNetwork, make(chan struct{}))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	go handleChannelEvent(evch)
+	// evch, err := db.WatchDir(db.KeyNetwork, make(chan struct{}))
+	// if err != nil {
+	// log.Fatalln(err)
+	// }
+	// go handleChannelEvent(evch)
 
 	d := &MyIPAMHandler{}
 	h := ipam.NewHandler(d)
-	err = h.ServeUnix("root", "skylark")
+	err := h.ServeUnix("root", "skylark")
 	if err != nil {
 		log.Fatalln("IPAM Serve error", err)
 	}
@@ -160,8 +160,8 @@ func getIP(ip_net, ip string) (string, error) {
 		// TODO roll back required
 		return "", fmt.Errorf("put ip %s to assigned error: %v", ip, err)
 	}
-	//query container env, save flow limit setting into the kv store if available
-	go updateFlowLimit(ip_net, ip)
+	// query container env, save flow limit setting into the kv store if available
+	// go updateFlowLimit(ip_net, ip)
 	return ip, nil
 }
 
