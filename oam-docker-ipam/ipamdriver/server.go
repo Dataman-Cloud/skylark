@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/context"
 
 	"oam-docker-ipam/db"
+	_ "oam-docker-ipam/debug"
 	"oam-docker-ipam/util"
 )
 
@@ -102,16 +103,28 @@ func ReleaseIP(ip_net, ip string) error {
 }
 
 func AllocateIP(ip_net, ip string) (string, error) {
-	lock, err := db.NewLock(db.Normalize(db.KeyNetwork, ip_net, "wait"), &store.LockOptions{TTL: time.Second * 300})
-	if err != nil {
-		return "", fmt.Errorf("db store NewLock() error: %v", err)
-	}
-	log.Debugf("got db lock to take ip address: %s:%s", ip_net, ip)
+	lock, _ := db.NewLock(db.Normalize(db.KeyNetwork, ip_net, "wait"), nil) // etcd implements never return a non-nil error
 
-	if _, err := lock.Lock(nil); err != nil {
+	var err error
+	for i := 1; i <= 10; i++ {
+		stopCh := make(chan struct{})
+		timer := time.AfterFunc(time.Second*1, func() {
+			close(stopCh)
+		})
+		_, err = lock.Lock(stopCh)
+		if err != nil {
+			log.Warnf("db store Lock() error: %v, retry ...", err)
+		} else {
+			timer.Stop()
+			break
+		}
+	}
+	if err != nil {
 		return "", fmt.Errorf("db store Lock() error: %v", err)
 	}
+
 	defer lock.Unlock()
+	log.Debugf("got db lock to take ip address: %s:%s", ip_net, ip)
 
 	ip, err = getIP(ip_net, ip)
 	if err != nil {
