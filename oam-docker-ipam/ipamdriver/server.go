@@ -92,13 +92,6 @@ func ReleaseIP(ip_net, ip string) error {
 		return err
 	}
 
-	// put back to pool
-	err = db.SetKey(db.Normalize(db.KeyNetwork, ip_net, "pool", ip), "")
-	if err != nil {
-		// TODO roll back required
-		return err
-	}
-
 	return nil
 }
 
@@ -115,16 +108,13 @@ func AllocateIP(ip_net, ip string) (string, error) {
 		close(stopCh)
 	})
 
-	_, err := lock.Lock(stopCh)
-	if err != nil {
+	if _, err := lock.Lock(stopCh); err != nil {
 		return "", fmt.Errorf("db store Lock() error: %v", err)
 	}
 
 	// obtained lock
 	timer.Stop()
 	defer lock.Unlock()
-
-	log.Debugf("got db lock to take ip address: %s:%s", ip_net, ip)
 
 	ip, err = getIP(ip_net, ip)
 	if err != nil {
@@ -136,46 +126,86 @@ func AllocateIP(ip_net, ip string) (string, error) {
 	return ip, nil
 }
 
-func getIP(ip_net, ip string) (string, error) {
-	ip_pool, err := db.ListKeyNames(db.Normalize(db.KeyNetwork, ip_net, "pool"))
+// Return unassigned IP from Pool.
+func getUnassignedIP(pool []string, net string) (string, error) {
+	for _, ip := range pool {
+		assigned, err := checkIPAssigned(net, ip)
+		if err != nil {
+			return "", fmt.Errorf("check ip %s assigned error: %v", ip, err)
+		}
+		
+		if !assigned {
+			return ip, nil
+		}
+	}
+
+	return "", fmt.Errorf("No more IPs in pool:%v", pool)
+}
+
+// Check the IP is in pool or if has been assigned.
+func validateIP(pool []string, ip, net string) (bool, error) {
+	// check exists
+	exists := false
+	for _, addr := range pool {
+		if ip == addr {
+			exists = true	
+		}
+	}
+
+	if !exists {
+		return false, fmt.Errorf("IP %s not in pool", ip)
+	}
+
+	// check assigned
+	assigned, err := checkIPAssigned(net, ip)
+	if err != nil {
+		return false, fmt.Errorf("check ip %s assigned error: %v", ip, err)
+	}
+
+	if assigned {
+		return false, fmt.Errorf("IP %s has been assigned", ip)
+	}
+		
+	return true, nil
+}
+
+func getIP(net, ip string) (string, error) {
+	pool, err := db.ListKeyNames(db.Normalize(db.KeyNetwork, net, "pool"))
 	if err != nil {
 		return "", fmt.Errorf("fetch ip pool error: %v", err)
 	}
-	if len(ip_pool) == 0 {
+
+	if len(pool) == 0 {
 		return "", errors.New("empty ip pool")
 	}
 
-	// no prefered ip given, pick up first ip in the pool
+	if ip != "" {
+		valid, err := validateIP(pool, ip, net)
+		if err != nil {
+			return "", fmt.Errorf("validate Ip got error: %v", err)
+		}
+		
+		if !valid {
+			return "", fmt.Errorf("Invalid IP: IP %s not in pool or has been assigned", ip)
+		}
+	}
+
 	if ip == "" {
-		ip = ip_pool[0]
-		log.Debugf("no prefered ip given, pick up the first ip [%s] in the pool ...", ip)
+		addr, err := getUnassignedIP(pool, net)
+		if err != nil {
+			return "", fmt.Errorf("Get unassigned IP got error: %v", err)
+		}
+
+		ip = addr
 	}
 
-	// ensure ip not empty
-	if ip == "" {
-		return "", fmt.Errorf("empty ip address")
-	}
-
-	assigned, err := checkIPAssigned(ip_net, ip)
-	if err != nil {
-		return "", fmt.Errorf("check ip %s assigned error: %v", ip, err)
-	}
-	if assigned {
-		return "", fmt.Errorf("ip %s has been allocated", ip)
-	}
-
-	// move ip from pool to assigned
-	err = db.DeleteKey(db.Normalize(db.KeyNetwork, ip_net, "pool", ip))
-	if err != nil {
-		return "", fmt.Errorf("remove ip %s from pool error: %v", ip, err)
-	}
-	err = db.SetKey(db.Normalize(db.KeyNetwork, ip_net, "assigned", hostname, ip), "")
+	// mark ipaddres as assigned
+	err = db.SetKey(db.Normalize(db.KeyNetwork, net, "assigned", hostname, ip), "")
 	if err != nil {
 		// TODO roll back required
 		return "", fmt.Errorf("put ip %s to assigned error: %v", ip, err)
 	}
-	// query container env, save flow limit setting into the kv store if available
-	// go updateFlowLimit(ip_net, ip)
+
 	return ip, nil
 }
 
