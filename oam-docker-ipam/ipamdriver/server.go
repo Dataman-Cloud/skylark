@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	//"github.com/docker/go-plugins-helpers/ipam"
@@ -29,6 +30,7 @@ import (
 
 var (
 	hostname string
+        lock sync.Mutex
 )
 
 func init() {
@@ -136,6 +138,9 @@ func AllocateIP(ip_net, ip string) (string, error) {
 }
 
 func getIP(ip_net, ip string) (string, error) {
+	lock.Lock()
+	defer lock.Unlock()
+
 	ip_pool, err := db.ListKeyNames(db.Normalize(db.KeyNetwork, ip_net, "pool"))
 	if err != nil {
 		return "", fmt.Errorf("fetch ip pool error: %v", err)
