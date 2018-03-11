@@ -137,6 +137,23 @@ func getUnassignedIP(pool []string, net string) (string, error) {
 		if !assigned {
 			return ip, nil
 		}
+
+		// maybe assign pool not clean
+
+		alive := checkIPAlive(ip)
+
+		// ip is really used by container.
+		if alive {
+			continue
+		}
+
+		// ip actually not used by any container, release it.
+		if err := ReleaseIP(net, ip); err != nil {
+			log.Errorln("Release assgined ip %s failed with error: %v", ip, err)
+			continue
+		} 
+
+		return ip, nil
 	}
 
 	return "", fmt.Errorf("No more IPs in pool:%v", pool)
@@ -162,16 +179,25 @@ func validateIP(pool []string, ip, net string) (bool, error) {
 		return false, fmt.Errorf("check ip %s assigned error: %v", ip, err)
 	}
 
-	if assigned {
+	if !assigned {
+		return true, nil
+	}
+
+	// maybe assign pool not clean
+	// check alive
+	alive := checkIPAlive(ip)
+
+	// ip is really used by container.
+	if alive {
 		return false, fmt.Errorf("IP %s has been assigned", ip)
 	}
 
-	// check alive
-	alive := checkIPAlive(ip)
-	if alive {
-		return false, fmt.Errorf("IP %s has been allocated on other host", ip)
-	}
-		
+	// ip actually not used by any container, release it.
+	if err := ReleaseIP(net, ip); err != nil {
+		log.Errorln("Release assgined ip %s failed with error: %v", ip, err)
+		return false, fmt.Errorf("IP %s has been assigned", ip)
+	} 
+
 	return true, nil
 }
 
