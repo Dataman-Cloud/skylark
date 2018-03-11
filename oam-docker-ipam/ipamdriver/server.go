@@ -165,6 +165,12 @@ func validateIP(pool []string, ip, net string) (bool, error) {
 	if assigned {
 		return false, fmt.Errorf("IP %s has been assigned", ip)
 	}
+
+	// check alive
+	alive := checkIPAlive(ip)
+	if alive {
+		return false, fmt.Errorf("IP %s has been allocated on other host", ip)
+	}
 		
 	return true, nil
 }
@@ -199,7 +205,7 @@ func getIP(net, ip string) (string, error) {
 		ip = addr
 	}
 
-	// mark ipaddres as assigned
+	// mark ipaddress as assigned
 	err = db.SetKey(db.Normalize(db.KeyNetwork, net, "assigned", hostname, ip), "")
 	if err != nil {
 		// TODO roll back required
@@ -224,6 +230,28 @@ func checkIPAssigned(ip_net, ip string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// use command `ping` check if ip has been allocated on other host
+func checkIPAlive(ip string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()		
+
+	cmd := exec.CommandContext(ctx, "ping", "-c 3", "-i 1", ip)
+	
+	_, err := cmd.Output()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		log.Errorln("Command timed out: ping -c 3 -i 1", ip)
+		return false
+	}
+
+	if err != nil {
+		log.Errorln("Non-zero exit code:", err)
+		return false
+	}
+
+	return true
 }
 
 func initializeConfig(ip_net, mask string) error {
