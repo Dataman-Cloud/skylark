@@ -105,27 +105,27 @@ func ReleaseIP(ip_net, ip string) error {
 }
 
 func AllocateIP(ip_net, ip string) (string, error) {
-	lock, _ := db.NewLock(db.Normalize(db.KeyNetwork, ip_net, "wait"), nil) // etcd implements never return a non-nil error
-
-	var err error
-	for i := 1; i <= 10; i++ {
-		stopCh := make(chan struct{})
-		timer := time.AfterFunc(time.Second*1, func() {
-			close(stopCh)
-		})
-		_, err = lock.Lock(stopCh)
-		if err != nil {
-			log.Warnf("db store Lock() error: %v, retry ...", err)
-		} else {
-			timer.Stop()
-			break
-		}
+	lockKey := db.Normalize(db.KeyNetwork, ip_net, "wait")
+	lock, err := db.NewLock(lockKey, nil)
+	if err != nil {
+		return "", fmt.Errorf("NewLock() error: %v", err)
 	}
+
+	stopCh := make(chan struct{})
+	
+	timer := time.AfterFunc(time.Second * 10, func() {
+		close(stopCh)
+	})
+
+	_, err := lock.Lock(stopCh)
 	if err != nil {
 		return "", fmt.Errorf("db store Lock() error: %v", err)
 	}
 
+	// obtained lock
+	timer.Stop()
 	defer lock.Unlock()
+
 	log.Debugf("got db lock to take ip address: %s:%s", ip_net, ip)
 
 	ip, err = getIP(ip_net, ip)
@@ -134,6 +134,7 @@ func AllocateIP(ip_net, ip string) (string, error) {
 	}
 
 	log.Infof("Allocated IP %s", ip)
+
 	return ip, nil
 }
 
